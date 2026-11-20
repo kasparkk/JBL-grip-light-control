@@ -44,8 +44,9 @@ h3{margin:20px 0 6px}
 <div id="mst" style="font-weight:600;margin:4px 0">Keine Show aktiv</div>
 <p style="margin:0 0 6px;color:#555">Farbwechsel laeuft mit jedem Theme: erst die Show starten, dann ein Theme waehlen. Farbkreis antippen stoppt jede Show.</p>
 <label>Tempo <input type="range" id="sp" min="1" max="10" value="5"></label>
-<label>Hell min <input type="range" id="lo" min="3" max="60" value="10"></label>
-<label>Hell max <input type="range" id="hi" min="40" max="100" value="100"></label>
+<p style="margin:8px 0 4px;color:#555">Helligkeit waehrend der Show: dazwischen pendelt das Licht (Atmen, Musik). Themes rotieren nutzt nur den hellsten Punkt.</p>
+<label>Dunkelster Punkt <span id="lov">10</span>% <input type="range" id="lo" min="3" max="60" value="10"></label>
+<label>Hellster Punkt <span id="hiv">100</span>% <input type="range" id="hi" min="40" max="100" value="100"></label>
 <div id="beat" style="height:10px;background:#ddd;border-radius:5px;margin-top:8px"><div id="bar" style="height:10px;width:0;background:#e60;border-radius:5px"></div></div>
 <pre id="log"></pre>
 <script>
@@ -54,6 +55,7 @@ const SVC="65786365-6c70-6f69-6e74-2e636f6d0000",RX="65786365-6c70-6f69-6e74-2e6
 const F={theme:0x0d40,brightness:0x0d41,color:0x0d46};
 const THEMES={FREEZE:0x8c,BOUNCE:0x89,TRIM:0x8a,SWITCH:0x8b,NEON:0x81};
 const $=i=>document.getElementById(i);let tx;
+["lo","hi"].forEach(i=>$(i).addEventListener("input",()=>{$(i+"v").textContent=$(i).value}));
 const log=t=>{$("log").textContent+=t+"\n";$("log").scrollTop=1e9};
 function pkt(fid,v){const p=new Uint8Array([fid&255,fid>>8,1,0,v&255]);
  const h=new Uint8Array([0,0xdd,2,0,1,0,p.length,0]);const o=new Uint8Array(13);o.set(h);o.set(p,8);return o}
