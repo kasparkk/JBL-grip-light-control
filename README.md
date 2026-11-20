@@ -10,6 +10,9 @@ Unofficial hobby project. Not affiliated with or endorsed by JBL or Harman. Use 
 - Brightness 3 to 100 %, light on and off
 - Own shows driven from the page: breathe, colour cycle (pick any 2 to 4 colours) on top of any theme, theme rotation, and a bass-beat music mode (microphone, or shared tab audio on desktop)
 
+## Remote mode (phone without Bluetooth)
+A device that is connected to the Grip (e.g. a laptop) presses **Relais starten**; another device enters the same secret code and presses **Als Fernbedienung**. Commands go through a Supabase Realtime broadcast channel named after the code. Only theme, brightness and colour commands are forwarded. Anyone who knows your code can control your light, so pick a code nobody can guess. If you fork this, put your own Supabase project URL and publishable key in `index.html`.
+
 ## Use
 1. Close the JBL app on your phone, switch the Grip on.
 2. Open the page in Chrome (desktop or Android) and press **Verbinden** (connect).
