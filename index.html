@@ -65,7 +65,7 @@ function raw(f,v){if(tx)return tx.writeValueWithoutResponse(pkt(f,v));
  return Promise.reject("nicht verbunden")}
 async function joinRelay(role){const code=$("rcode").value.trim();
  if(code.length<6){log("Bitte einen Code mit mindestens 6 Zeichen eingeben");return}
- if(role==="host"&&!tx){log("Erst mit dem Grip verbinden");return}
+ if(role==="host"&&!tx&&!auto){log("Erst mit dem Grip verbinden");return}
  try{localStorage.setItem("jblcode",code)}catch(e){}
  if(!window.supabase){log("ERR Supabase-Bibliothek nicht geladen (Internet?)");return}
  if(!sb)sb=window.supabase.createClient(SB_URL,SB_KEY);
@@ -90,12 +90,29 @@ document.querySelectorAll("[data-c]").forEach(b=>b.onclick=()=>{stop();send(F.co
 let t;$("br").oninput=e=>{if(mode==="breathe"||mode==="music")stop();$("pv").textContent=e.target.value;clearTimeout(t);t=setTimeout(()=>send(F.brightness,0x80|+e.target.value),120)};
 $("on").onclick=()=>send(F.brightness,0x80|+$("br").value);
 $("off").onclick=()=>{stop();send(F.brightness,+$("br").value)};
+let gdev=null,retryT=null;
+async function connectDev(dev){clearTimeout(retryT);
+ try{const s=await(await dev.gatt.connect()).getPrimaryService(SVC);
+  tx=await s.getCharacteristic(TX);const rx=await s.getCharacteristic(RX);await rx.startNotifications();
+  rx.addEventListener("characteristicvaluechanged",e=>log("<- "+hexb(new Uint8Array(e.target.value.buffer))));
+  $("st").textContent="verbunden: "+dev.name;ctl();log("verbunden");return true}
+ catch(x){tx=null;log("ERR "+x);if(dev===gdev&&auto){log("Neuer Versuch in 15 s");retryT=setTimeout(()=>connectDev(dev),15000)}return false}}
+function watchDev(dev){if(gdev===dev)return;gdev=dev;
+ dev.addEventListener("gattserverdisconnected",()=>{tx=null;$("st").textContent="getrennt";log("Grip getrennt");
+  if(auto){log("Neuer Versuch in 15 s");retryT=setTimeout(()=>connectDev(dev),15000)}})}
 $("conn").onclick=async()=>{try{
  const dev=await navigator.bluetooth.requestDevice({acceptAllDevices:true,optionalServices:[SVC]});
- const s=await(await dev.gatt.connect()).getPrimaryService(SVC);
- tx=await s.getCharacteristic(TX);const rx=await s.getCharacteristic(RX);await rx.startNotifications();
- rx.addEventListener("characteristicvaluechanged",e=>log("<- "+hexb(new Uint8Array(e.target.value.buffer))));
- $("st").textContent="verbunden: "+dev.name;ctl();log("verbunden")}catch(x){log("ERR "+x)}};
+ watchDev(dev);await connectDev(dev)}catch(x){log("ERR "+x)}};
+// ---- Automatik: Seite mit ?auto oeffnen ----
+const auto=new URLSearchParams(location.search).has("auto");
+async function autoStart(){
+ if(!navigator.bluetooth||!navigator.bluetooth.getDevices){log("Auto-Verbinden geht nicht: in chrome://flags 'Use the new permissions backend for Web Bluetooth' einschalten, Chrome neu starten, dann einmal von Hand verbinden.");return}
+ const devs=await navigator.bluetooth.getDevices();const dev=devs.find(d=>/grip/i.test(d.name||""))||devs[0];
+ if(!dev){log("Kein gespeicherter Grip. Einmal von Hand auf Verbinden druecken.");return}
+ log("Auto: verbinde mit "+(dev.name||"Grip"));watchDev(dev);
+ if($("rcode").value.trim().length>=6)joinRelay("host");else log("Kein Code gespeichert, Relais aus.");
+ await connectDev(dev)}
+if(auto){$("st").textContent="Automatik an";autoStart()}
 
 // ---- Lichtshow ----
 let last={},lastT=0,pend={},timer=null,run=0,mode="";
