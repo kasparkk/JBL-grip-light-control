@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>JBL Grip Licht</title>
+<link rel="manifest" href="manifest.json"><link rel="icon" href="icon.svg"><meta name="theme-color" content="#111111">
+<style>
+body{font:16px system-ui,sans-serif;max-width:520px;margin:24px auto;padding:0 16px}
+button{font:inherit;padding:12px 16px;margin:4px 4px 4px 0;border:1px solid #888;border-radius:10px;background:#fff;cursor:pointer}
+button:disabled{opacity:.4;cursor:default}
+.c{width:56px;height:56px;border-radius:50%;padding:0}
+input[type=range]{width:100%}
+pre{background:#eee;padding:8px;height:110px;overflow:auto;font-size:13px}
+h3{margin:20px 0 6px}
+</style></head><body>
+<h2>JBL Grip Licht</h2>
+<p>Chrome (Laptop oder Android). JBL-App schliessen, Grip anschalten.</p>
+<button id="conn">Verbinden</button> <span id="st">nicht verbunden</span>
+<h3>Lichtshow</h3>
+<div id="themes"></div>
+<h3>Farbe</h3>
+<button class="c" style="background:linear-gradient(135deg,#ffc27a,#ff7a7a)" data-c="1" disabled></button>
+<button class="c" style="background:linear-gradient(135deg,#ff2a7a,#ff00b0)" data-c="2" disabled></button>
+<button class="c" style="background:linear-gradient(135deg,#3a7bff,#0033cc)" data-c="3" disabled></button>
+<button class="c" style="background:linear-gradient(135deg,#e00,#a00)" data-c="4" disabled></button>
+<h3>Helligkeit <span id="pv">50</span>%</h3>
+<input type="range" id="br" min="3" max="100" value="50" disabled>
+<div><button id="on" disabled>Licht an</button><button id="off" disabled>Licht aus</button></div>
+<h3>Eigene Lichtshow</h3>
+<p style="margin:0 0 6px;color:#555">Der Grip kennt nur 5 Shows, 4 Farben und Helligkeit. Die Show steuert genau diese drei im Takt.</p>
+<div>
+<button data-m="breathe" class="m" disabled>Atmen</button>
+<button data-m="colors" class="m" disabled>Farbwechsel (zum Theme)</button>
+<button data-m="themes" class="m" disabled>Themes rotieren</button>
+<button id="mtab" disabled>Musik (Tab/System teilen)</button>
+<button id="mmic" disabled>Musik (Mikrofon)</button>
+<button id="mstop" disabled>Stopp</button>
+</div>
+<div id="cset">Farben fuer Farbwechsel: <label style="margin-right:10px"><input type="checkbox" value="1" checked> Orange</label><label style="margin-right:10px"><input type="checkbox" value="2" checked> Pink</label><label style="margin-right:10px"><input type="checkbox" value="3" checked> Blau</label><label style="margin-right:10px"><input type="checkbox" value="4" checked> Rot</label></div>
+<div id="mst" style="font-weight:600;margin:4px 0">Keine Show aktiv</div>
+<p style="margin:0 0 6px;color:#555">Farbwechsel laeuft mit jedem Theme: erst die Show starten, dann ein Theme waehlen. Farbkreis antippen stoppt jede Show.</p>
+<label>Tempo <input type="range" id="sp" min="1" max="10" value="5"></label>
+<label>Hell min <input type="range" id="lo" min="3" max="60" value="10"></label>
+<label>Hell max <input type="range" id="hi" min="40" max="100" value="100"></label>
+<div id="beat" style="height:10px;background:#ddd;border-radius:5px;margin-top:8px"><div id="bar" style="height:10px;width:0;background:#e60;border-radius:5px"></div></div>
+<pre id="log"></pre>
+<script>
+const SVC="65786365-6c70-6f69-6e74-2e636f6d0000",RX="65786365-6c70-6f69-6e74-2e636f6d0001",TX="65786365-6c70-6f69-6e74-2e636f6d0002";
+// IDs und Werte aus dem Bluetooth-Log, mit Bildschirmaufnahme abgeglichen, am Grip getestet
+const F={theme:0x0d40,brightness:0x0d41,color:0x0d46};
+const THEMES={FREEZE:0x8c,BOUNCE:0x89,TRIM:0x8a,SWITCH:0x8b,NEON:0x81};
+const $=i=>document.getElementById(i);let tx;
+const log=t=>{$("log").textContent+=t+"\n";$("log").scrollTop=1e9};
+function pkt(fid,v){const p=new Uint8Array([fid&255,fid>>8,1,0,v&255]);
+ const h=new Uint8Array([0,0xdd,2,0,1,0,p.length,0]);const o=new Uint8Array(13);o.set(h);o.set(p,8);return o}
+const send=(f,v)=>tx.writeValueWithoutResponse(pkt(f,v)).then(()=>log("-> 0x"+f.toString(16)+" = 0x"+v.toString(16))).catch(e=>log("ERR "+e));
+
+const hexb=a=>[...a].map(x=>x.toString(16).padStart(2,"0")).join("");
+const ctl=()=>[...document.querySelectorAll("button:not(#conn),input")].forEach(e=>e.disabled=false);
+for(const[n,v]of Object.entries(THEMES)){const b=document.createElement("button");b.textContent=n;b.disabled=true;b.onclick=()=>{if(mode!=="colors")stop();send(F.theme,v)};$("themes").appendChild(b)}
+document.querySelectorAll("[data-c]").forEach(b=>b.onclick=()=>{stop();send(F.color,+b.dataset.c)});
+let t;$("br").oninput=e=>{if(mode==="breathe"||mode==="music")stop();$("pv").textContent=e.target.value;clearTimeout(t);t=setTimeout(()=>send(F.brightness,0x80|+e.target.value),120)};
+$("on").onclick=()=>send(F.brightness,0x80|+$("br").value);
+$("off").onclick=()=>{stop();send(F.brightness,+$("br").value)};
+$("conn").onclick=async()=>{try{
+ const dev=await navigator.bluetooth.requestDevice({acceptAllDevices:true,optionalServices:[SVC]});
+ const s=await(await dev.gatt.connect()).getPrimaryService(SVC);
+ tx=await s.getCharacteristic(TX);const rx=await s.getCharacteristic(RX);await rx.startNotifications();
+ rx.addEventListener("characteristicvaluechanged",e=>log("<- "+hexb(new Uint8Array(e.target.value.buffer))));
+ $("st").textContent="verbunden: "+dev.name;ctl();log("verbunden")}catch(x){log("ERR "+x)}};
+
+// ---- Lichtshow ----
+let last={},lastT=0,pend={},timer=null,run=0,mode="";
+const NAMES={breathe:"Atmen",colors:"Farbwechsel",themes:"Themes rotieren",music:"Musik"};
+function setMode(m){mode=m;$("mst").textContent=m?"Laeuft: "+NAMES[m]:"Keine Show aktiv"}
+function put(key,v){pend[key]=v;if(!timer)timer=setTimeout(flush,0)}
+async function flush(){timer=null;const w=Math.max(0,170-(Date.now()-lastT));
+ if(w>0){timer=setTimeout(flush,w);return}
+ const k=Object.keys(pend)[0];if(k===undefined)return;const v=pend[k];delete pend[k];
+ if(last[k]!==v){last[k]=v;lastT=Date.now();try{await tx.writeValueWithoutResponse(pkt(F[k],v))}catch(e){log("ERR "+e)}}
+ if(Object.keys(pend).length)timer=setTimeout(flush,170)}
+const pct=p=>put("brightness",0x80|Math.round(Math.max(3,Math.min(100,p))));
+const COL=[1,2,3,4],TH=Object.values(THEMES);
+function stop(){run++;setMode("");last={};document.getElementById("bar").style.width="0";if(window.ac){try{window.ac.close()}catch(e){}window.ac=null}}
+function sleepm(ms){return new Promise(r=>setTimeout(r,ms))}
+async function breathe(id){let t0=Date.now();while(run===id){const per=(11-+$("sp").value)*1000,lo=+$("lo").value,hi=+$("hi").value;
+ const x=(Math.sin((Date.now()-t0)/per*2*Math.PI-Math.PI/2)+1)/2;pct(lo+(hi-lo)*x);await sleepm(200)}}
+async function colors(id){let i=0;while(run===id){const sel=[...document.querySelectorAll("#cset input:checked")].map(x=>+x.value);const c=sel.length?sel:COL;put("color",c[i++%c.length]);await sleepm(170+(10-+$("sp").value)*300)}}
+async function themes(id){let i=0;pct(+$("hi").value);while(run===id){put("theme",TH[i++%TH.length]);await sleepm((11-+$("sp").value)*800+2000)}}
+async function music(id,stream){
+ const ac=new AudioContext();window.ac=ac;const an=ac.createAnalyser();an.fftSize=1024;ac.createMediaStreamSource(stream).connect(an);
+ const buf=new Uint8Array(an.frequencyBinCount);let avg=0,cur=0,beats=0,lastBeat=0;
+ const bins=Math.round(160/(ac.sampleRate/an.fftSize));
+ while(run===id){an.getByteFrequencyData(buf);let e=0;for(let i=1;i<=bins;i++)e+=buf[i];e/=bins;
+  const lo=+$("lo").value,hi=+$("hi").value,now=Date.now();
+  if(e>avg*1.25+8&&now-lastBeat>260){lastBeat=now;cur=hi;beats++;
+   if(beats%8===0)put("color",COL[(beats/8)%COL.length]);if(beats%32===0)put("theme",TH[(beats/32)%TH.length])}
+  else cur=Math.max(lo,cur-(hi-lo)*0.09);
+  avg=avg*0.92+e*0.08;pct(cur);document.getElementById("bar").style.width=Math.min(100,e/1.6)+"%";await sleepm(40)}
+ stream.getTracks().forEach(t=>t.stop())}
+document.querySelectorAll(".m").forEach(b=>b.onclick=()=>{stop();const id=run;setMode(b.dataset.m);({breathe,colors,themes})[b.dataset.m](id)});
+$("mstop").onclick=stop;
+$("mtab").onclick=async()=>{try{const s=await navigator.mediaDevices.getDisplayMedia({video:true,audio:true});
+ if(!s.getAudioTracks().length){log("Kein Ton geteilt. Beim Teilen 'Tab-Audio teilen' ankreuzen.");s.getTracks().forEach(t=>t.stop());return}
+ stop();setMode("music");music(run,s)}catch(e){log("ERR "+e)}};
+$("mmic").onclick=async()=>{try{const s=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false}});stop();setMode("music");music(run,s)}catch(e){log("ERR "+e)}};
+
+</script></body></html>
